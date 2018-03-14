@@ -51,10 +51,7 @@ start_link() ->
   {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
-  {ok, RedisHost} = application:get_env(testapp, redis_host),
-  {ok, RedisPort} = application:get_env(testapp, redis_port),
-  {ok, RedisDB} = application:get_env(testapp, redis_db),
-  {ok, RedisClient} = eredis:start_link(RedisHost, RedisPort, RedisDB),
+  RedisClient = redis:new_client(),
 
   {ok, QueueKey} = application:get_env(testapp, queue_key),
   {ok, ResultSetKey} = application:get_env(testapp, result_set_key),
@@ -155,6 +152,7 @@ code_change(_OldVsn, State, _Extra) ->
 get_next_integer() ->
   gen_server:cast(self(), get_next_integer).
 
+-spec process_integer(#state{}) -> #state{}.
 process_integer(State = #state{
   queue_key = QueueKey,
   result_set_key = ResultSetKey,
@@ -169,9 +167,11 @@ process_integer(State = #state{
   end,
   State.
 
+-spec is_prime(integer()) -> boolean().
 is_prime(N) ->
   is_prime(N, 2, erlang:trunc(math:sqrt(N) + 1)).
 
+-spec is_prime(integer(), integer(), integer()) -> boolean().
 is_prime(_, Max, Max) ->
   true;
 is_prime(N, I, Max) ->
