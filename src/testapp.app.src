@@ -1,0 +1,23 @@
+{application, testapp,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { testapp_app, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env, [
+    {max_random_value, 1000},
+    {redis_host, "localhost"},
+    {redis_port, 3000},
+    {redis_db, "test"},
+    {queue_key, "queue"},
+    {result_set_key, "result-set"}
+  ]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.
