@@ -81,9 +81,12 @@ handle_cast(get_next_integer, State) ->
 %%% Internal functions
 %%%===================================================================
 
+% Schedules next integer processing.
 get_next_integer() ->
   gen_server:cast(self(), get_next_integer).
 
+% Determines if the next integer from Redis queue is prime
+% number. If it is, stores it in Redis set.
 -spec process_integer(#state{}) -> #state{}.
 process_integer(State = #state{
   queue_key = QueueKey,
@@ -100,6 +103,7 @@ process_integer(State = #state{
   end,
   State.
 
+% Checks if given integer is prime number.
 -spec is_prime(integer()) -> boolean().
 is_prime(N) ->
   is_prime(N, 2, erlang:trunc(math:sqrt(N) + 1)).

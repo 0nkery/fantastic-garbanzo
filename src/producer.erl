@@ -82,9 +82,12 @@ handle_cast(generate_integer, State) ->
 %%% Internal functions
 %%%===================================================================
 
+% Schedules next integer generation op.
 generate_next() ->
   gen_server:cast(self(), generate_integer).
 
+% Generates uniform distributed integer and stores
+% it to Redis queue.
 -spec generate_integer(#state{}) -> #state{}.
 generate_integer(#state{
   max_random_value = MaxRandomValue,
@@ -96,6 +99,8 @@ generate_integer(#state{
   % actual sending to Redis in separate process
   spawn(fun() -> eredis:q(RedisClient, ["RPUSH", QueueKey, RandomValue]) end).
 
+% Uniformly calls given fn N times in given time interval on
+% best-effort basis (ideal uniformity is not guaranteed).
 -spec uniform_recursion(integer(), integer(), tuple()) -> any().
 uniform_recursion(1, TotalMicroseconds, Fun) ->
   {ElapsedMicroseconds, _ReturnValue} = timer:tc(Fun),
@@ -109,6 +114,7 @@ uniform_recursion(Times, TotalMicroseconds, Fun) ->
   NewTotalMicroseconds = MicrosecondsLeft - BusyWaitMicroseconds,
   uniform_recursion(Times - 1, NewTotalMicroseconds, Fun).
 
+% Busy waits during given amount of time.
 busy_wait(Microseconds) when Microseconds =< 0 ->
   ok;
 busy_wait(Microseconds) ->
