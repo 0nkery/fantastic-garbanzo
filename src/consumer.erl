@@ -6,9 +6,14 @@
 -export([start_link/0]).
 
 %% gen_server callbacks
--export([init/1,
+-export([
+  init/1,
   handle_cast/2
 ]).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(SERVER, ?MODULE).
 
@@ -118,3 +123,13 @@ is_prime(N, I, Max) ->
     true ->
       is_prime(N, I + 1, Max)
   end.
+
+-ifdef(TEST).
+
+is_prime_test() ->
+  Tests = [{2, true}, {3, true}, {4, false}, {11, true}, {20, false}, {997, true}],
+  lists:foreach(fun({N, ShouldBe}) ->
+    ?assertEqual(is_prime(N), ShouldBe)
+  end, Tests).
+
+-endif.

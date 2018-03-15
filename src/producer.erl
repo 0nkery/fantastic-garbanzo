@@ -10,7 +10,8 @@
 -endif.
 
 %% gen_server callbacks
--export([init/1,
+-export([
+  init/1,
   handle_cast/2
 ]).
 
