@@ -28,7 +28,10 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-    {ok, { {one_for_all, 0, 1}, []} }.
+    {ok, { {one_for_all, 0, 1}, [
+      {producer, {producer, start_link, []}, permanent, 5000, worker, [producer]},
+      {consumer, {consumer, start_link, []}, permanent, 5000, worker, [consumer]}
+    ]} }.
 
 %%====================================================================
 %% Internal functions
