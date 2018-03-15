@@ -90,7 +90,8 @@ process_integer(State = #state{
   result_set_key = ResultSetKey,
   redis_client = RedisClient}
 ) ->
-  {ok, Integer} = eredis:q(RedisClient, ["BLPOP", QueueKey, 0]),
+  {ok, [_List, BinaryInt]} = eredis:q(RedisClient, ["BLPOP", QueueKey, 0], infinity),
+  Integer = list_to_integer(binary_to_list(BinaryInt)),
   case is_prime(Integer) of
     true ->
       eredis:q(RedisClient, ["SADD", ResultSetKey, Integer]);

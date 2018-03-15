@@ -50,6 +50,7 @@ start_link() ->
   {stop, Reason :: term()} | ignore).
 init([]) ->
   {ok, MaxRandomValue} = application:get_env(testapp, max_random_value),
+  {ok, QueueKey} = application:get_env(testapp, queue_key),
 
   RedisClient = redis:new_client(),
 
@@ -57,7 +58,8 @@ init([]) ->
 
   {ok, #state{
     max_random_value = MaxRandomValue,
-    redis_client = RedisClient
+    redis_client = RedisClient,
+    queue_key = QueueKey
   }}.
 
 %%--------------------------------------------------------------------
@@ -72,7 +74,7 @@ init([]) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_cast(generate_integer, State) ->
-  uniform_recursion(?RATE, 1000 * 1000, {?MODULE, generate_integer, State}),
+  uniform_recursion(?RATE, 1000 * 1000, fun() -> generate_integer(State) end),
   generate_next(),
   {noreply, State}.
 
@@ -84,7 +86,7 @@ generate_next() ->
   gen_server:cast(self(), generate_integer).
 
 -spec generate_integer(#state{}) -> #state{}.
-generate_integer(State = #state{
+generate_integer(#state{
   max_random_value = MaxRandomValue,
   redis_client = RedisClient,
   queue_key = QueueKey
@@ -92,26 +94,26 @@ generate_integer(State = #state{
   % generating number in range 2 .. MaxRandomValue
   RandomValue = random:uniform(MaxRandomValue - 1) + 1,
   % actual sending to Redis in separate process
-  spawn(fun() -> eredis:q(RedisClient, ["RPUSH", QueueKey, RandomValue]) end),
-  State.
+  spawn(fun() -> eredis:q(RedisClient, ["RPUSH", QueueKey, RandomValue]) end).
 
 -spec uniform_recursion(integer(), integer(), tuple()) -> any().
-uniform_recursion(-1, TotalMicroseconds, {_M, _F, ReturnValue}) ->
-  busy_wait(TotalMicroseconds),
-  ReturnValue;
-uniform_recursion(Times, TotalMicroseconds, {M, F, InitialValue}) ->
-  {ElapsedMicroseconds, ReturnValue} = timer:tc(M, F, [InitialValue]),
-  TotalMicroseconds = TotalMicroseconds - ElapsedMicroseconds,
-  BusyWaitMicroseconds = erlang:trunc((TotalMicroseconds - ElapsedMicroseconds) / (Times - 1)),
+uniform_recursion(1, TotalMicroseconds, Fun) ->
+  {ElapsedMicroseconds, _ReturnValue} = timer:tc(Fun),
+  MicrosecondsLeft = TotalMicroseconds - ElapsedMicroseconds,
+  busy_wait(MicrosecondsLeft);
+uniform_recursion(Times, TotalMicroseconds, Fun) ->
+  {ElapsedMicroseconds, _ReturnValue} = timer:tc(Fun),
+  MicrosecondsLeft = TotalMicroseconds - ElapsedMicroseconds,
+  BusyWaitMicroseconds = erlang:trunc((MicrosecondsLeft - (Times - 1) * ElapsedMicroseconds) / (Times - 1)),
   busy_wait(BusyWaitMicroseconds),
-  TotalMicroseconds = TotalMicroseconds - BusyWaitMicroseconds,
-  uniform_recursion(Times - 1, TotalMicroseconds, {M, F, ReturnValue}).
-
+  NewTotalMicroseconds = MicrosecondsLeft - BusyWaitMicroseconds,
+  uniform_recursion(Times - 1, NewTotalMicroseconds, Fun).
 
 busy_wait(Microseconds) when Microseconds =< 0 ->
   ok;
 busy_wait(Microseconds) ->
   StartedAt = erlang:now(),
   FinishedAt = erlang:now(),
-  Microseconds = timer:now_diff(StartedAt, FinishedAt),
-  busy_wait(Microseconds).
+  Elapsed = timer:now_diff(FinishedAt, StartedAt),
+  NewMicroseconds = Microseconds - Elapsed,
+  busy_wait(NewMicroseconds).
