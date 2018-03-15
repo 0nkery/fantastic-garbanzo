@@ -5,6 +5,10 @@
 %% API
 -export([start_link/0]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% gen_server callbacks
 -export([init/1,
   handle_cast/2
@@ -74,7 +78,7 @@ init([]) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_cast(generate_integer, State) ->
-  uniform_recursion(?RATE, 1000 * 1000, fun() -> generate_integer(State) end),
+  run_n_times_uniformly(?RATE, 1000 * 1000, fun() -> generate_integer(State) end),
   generate_next(),
   {noreply, State}.
 
@@ -101,18 +105,18 @@ generate_integer(#state{
 
 % Uniformly calls given fn N times in given time interval on
 % best-effort basis (ideal uniformity is not guaranteed).
--spec uniform_recursion(integer(), integer(), tuple()) -> any().
-uniform_recursion(1, TotalMicroseconds, Fun) ->
+-spec run_n_times_uniformly(integer(), integer(), tuple()) -> any().
+run_n_times_uniformly(1, TotalMicroseconds, Fun) ->
   {ElapsedMicroseconds, _ReturnValue} = timer:tc(Fun),
   MicrosecondsLeft = TotalMicroseconds - ElapsedMicroseconds,
   busy_wait(MicrosecondsLeft);
-uniform_recursion(Times, TotalMicroseconds, Fun) ->
+run_n_times_uniformly(Times, TotalMicroseconds, Fun) ->
   {ElapsedMicroseconds, _ReturnValue} = timer:tc(Fun),
   MicrosecondsLeft = TotalMicroseconds - ElapsedMicroseconds,
   BusyWaitMicroseconds = erlang:trunc((MicrosecondsLeft - (Times - 1) * ElapsedMicroseconds) / (Times - 1)),
   busy_wait(BusyWaitMicroseconds),
   NewTotalMicroseconds = MicrosecondsLeft - BusyWaitMicroseconds,
-  uniform_recursion(Times - 1, NewTotalMicroseconds, Fun).
+  run_n_times_uniformly(Times - 1, NewTotalMicroseconds, Fun).
 
 % Busy waits during given amount of time.
 busy_wait(Microseconds) when Microseconds =< 0 ->
@@ -121,5 +125,45 @@ busy_wait(Microseconds) ->
   StartedAt = erlang:now(),
   FinishedAt = erlang:now(),
   Elapsed = timer:now_diff(FinishedAt, StartedAt),
-  NewMicroseconds = Microseconds - Elapsed,
+  % this fn takes twice as much time without '- 1' here
+  % since Elapsed is almost always is equal to 1 we subtracting
+  % time for other ops and in the end we're almost precise
+  NewMicroseconds = Microseconds - Elapsed - 1,
   busy_wait(NewMicroseconds).
+
+-ifdef(TEST).
+
+busy_wait_test() ->
+  BusyWaitMicroseconds = [100, 300, 50, 30000, 5000],
+  Precision = 2,
+  lists:foreach(fun(M) ->
+    StartedAt = erlang:now(),
+    busy_wait(M),
+    Elapsed = timer:now_diff(erlang:now(), StartedAt),
+    ?assert(erlang:abs(Elapsed - M) < Precision)
+  end, BusyWaitMicroseconds).
+
+run_n_times_uniformly_test() ->
+  Tests = [{3, 1000 * 1000}, {2, 1000}, {5, 1000 * 100}],
+  Precision = 5,
+  TestFun = fun({Times, M}) ->
+    StartedAt = erlang:now(),
+    Self = self(),
+    ValueToReceive = called,
+    run_n_times_uniformly(Times, M, fun() -> Self ! ValueToReceive end),
+    receive_n_times(Times, ValueToReceive),
+    Elapsed = timer:now_diff(erlang:now(), StartedAt),
+    io:format("elapsed ~p - should be ~p ~n", [Elapsed, M]),
+    ?assert(erlang:abs(Elapsed - M) < Precision)
+  end,
+  lists:foreach(fun(T) -> lists:duplicate(100, TestFun(T)) end, Tests).
+
+receive_n_times(0, _ValueToReceive) ->
+  ok;
+receive_n_times(N, ValueToReceive) ->
+  receive
+    ValueToReceive ->
+      receive_n_times(N - 1, ValueToReceive)
+  end.
+
+-endif.
